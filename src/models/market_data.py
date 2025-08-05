@@ -1,12 +1,13 @@
 """
-Data models for Ghana market inventory recommendation system.
+Enhanced Data models for Ghana market inventory recommendation system.
 
-Contains all the data structures used throughout the application.
+Contains all the data structures with quarterly business intelligence integration.
 """
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 from decimal import Decimal
+from datetime import datetime
 
 
 @dataclass
@@ -90,6 +91,27 @@ class EconomicIndicators:
 
 
 @dataclass
+class EconomicFactors:
+    """Economic factors for quarterly calculations."""
+    current_inflation_rate: float = 0.137
+    usd_to_cedis_rate: float = 15.85
+    quarterly_inflation_projection: Dict[str, float] = field(default_factory=lambda: {
+        'Q1': 0.14, 'Q2': 0.13, 'Q3': 0.12, 'Q4': 0.135
+    })
+    currency_volatility: float = 0.08
+
+
+@dataclass
+class QuarterData:
+    """Quarterly business information."""
+    months: List[int]
+    season: str
+    description: str
+    holiday_multiplier: float
+    events: List[str]
+
+
+@dataclass
 class RegionData:
     """Comprehensive data for a geographical region."""
     name: str
@@ -102,12 +124,26 @@ class RegionData:
     customer_behavior: Dict[str, float]
     economic_indicators: Dict[str, float] = field(default_factory=dict)
     
+    # Enhanced fields from monolithic version
+    enhanced_key_locations: Dict[str, int] = field(default_factory=lambda: {
+        'churches': 0, 'schools': 0, 'banks': 0, 'companies': 0,
+        'estates': 0, 'markets': 0, 'malls': 0, 'mosques': 0, 'tourist_sites': 0
+    })
+    
     def __post_init__(self):
         """Convert dictionaries to structured objects."""
-        self.infrastructure = Infrastructure(**self.infrastructure)
-        self.customer_behavior = CustomerBehavior(**self.customer_behavior)
-        if self.economic_indicators:
+        if isinstance(self.infrastructure, dict):
+            self.infrastructure = Infrastructure(**self.infrastructure)
+        if isinstance(self.customer_behavior, dict):
+            self.customer_behavior = CustomerBehavior(**self.customer_behavior)
+        if self.economic_indicators and isinstance(self.economic_indicators, dict):
             self.economic_indicators = EconomicIndicators(**self.economic_indicators)
+        
+        # Merge key_locations with enhanced_key_locations
+        if self.key_locations:
+            for key, value in self.key_locations.items():
+                if key in self.enhanced_key_locations:
+                    self.enhanced_key_locations[key] = value
         
         # Validate basic data
         if self.population <= 0:
@@ -137,7 +173,7 @@ class SupplierInfo:
 
 @dataclass
 class ProductData:
-    """Comprehensive data for a product."""
+    """Comprehensive data for a product with quarterly enhancements."""
     product_id: str
     name: str
     category: str
@@ -153,11 +189,27 @@ class ProductData:
     location_suitability: Dict[str, float]
     supplier_info: Dict[str, Any] = field(default_factory=dict)
     
+    # Enhanced fields from monolithic version
+    base_cost_usd: Optional[float] = None  # For imported goods
+    base_cost_cedis: Optional[float] = None  # For local goods
+    import_dependent: bool = False
+    quarterly_demand: Dict[str, float] = field(default_factory=lambda: {
+        'Q1': 1.0, 'Q2': 1.0, 'Q3': 1.0, 'Q4': 1.0
+    })  # Q1-Q4 multipliers
+
     def __post_init__(self):
         """Process and validate product data."""
         # Convert supplier info to structured object
-        if self.supplier_info:
+        if self.supplier_info and isinstance(self.supplier_info, dict):
             self.supplier_info = SupplierInfo(**self.supplier_info)
+
+        # Validate cost structure - now more flexible
+        if not self.base_cost_usd and not self.base_cost_cedis:
+            # Use existing cost_price_cedis as fallback
+            if self.import_dependent:
+                self.base_cost_usd = self.cost_price_cedis / 15.85  # Convert to USD
+            else:
+                self.base_cost_cedis = self.cost_price_cedis
         
         # Validate pricing
         if self.cost_price_cedis <= 0:

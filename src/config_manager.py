@@ -1,23 +1,24 @@
 """
-Configuration Manager for Ghana Inventory Recommendation System
+Enhanced Configuration Manager for Ghana Inventory Recommendation System
 
-Handles loading and validation of market data from JSON configuration files.
+Handles loading and validation of market data with quarterly business intelligence.
 """
 
 import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from datetime import datetime
 
 from .models.market_data import (
     HolidayPeriod, RegionData, ProductData, 
-    ScoringWeights, BusinessParameters
+    ScoringWeights, BusinessParameters, EconomicFactors, QuarterData
 )
 from .utils.validators import DataValidator
 
 
 class ConfigManager:
-    """Manages configuration data for the inventory recommendation system."""
+    """Enhanced configuration manager with quarterly business intelligence."""
     
     def __init__(self, config_path: Path):
         """
@@ -83,7 +84,7 @@ class ConfigManager:
                 validator.validate_holiday_period(holiday)
                 self._holiday_periods[name] = holiday
             
-            # Parse regions
+            # Parse regions with enhanced data
             self._regions = {}
             for name, data in self._raw_data['regions'].items():
                 region = RegionData(
@@ -100,7 +101,7 @@ class ConfigManager:
                 validator.validate_region_data(region)
                 self._regions[name] = region
             
-            # Parse products
+            # Parse products with enhanced quarterly data
             self._products = {}
             for product_id, data in self._raw_data['products'].items():
                 product = ProductData(
@@ -117,7 +118,12 @@ class ConfigManager:
                     seasonal_multipliers=data['seasonal_multipliers'],
                     target_demographics=data['target_demographics'],
                     location_suitability=data['location_suitability'],
-                    supplier_info=data.get('supplier_info', {})
+                    supplier_info=data.get('supplier_info', {}),
+                    # Enhanced fields
+                    base_cost_usd=data.get('base_cost_usd'),
+                    base_cost_cedis=data.get('base_cost_cedis'),
+                    import_dependent=data.get('import_dependent', False),
+                    quarterly_demand=data.get('quarterly_demand', {})
                 )
                 validator.validate_product_data(product)
                 self._products[product_id] = product
@@ -148,6 +154,99 @@ class ConfigManager:
         except Exception as e:
             raise ValueError(f"Configuration validation failed: {e}")
     
+    # Enhanced quarterly methods
+    def get_economic_factors(self) -> EconomicFactors:
+        """Get economic indicators for quarterly calculations."""
+        return EconomicFactors()  # Uses defaults from dataclass
+    
+    def get_quarters(self) -> Dict[str, QuarterData]:
+        """Get quarterly business periods."""
+        return {
+            'Q1': QuarterData(
+                months=[1, 2, 3],
+                season='dry_season_end',
+                description='End of Harmattan, School resumption, Independence celebrations',
+                holiday_multiplier=1.4,
+                events=['New_Year', 'Independence_Day', 'Easter']
+            ),
+            'Q2': QuarterData(
+                months=[4, 5, 6],
+                season='rainy_season_start',
+                description='Rainy season begins, Farming activities, Easter period',
+                holiday_multiplier=1.2,
+                events=['Easter', 'Mothers_Day', 'Labour_Day']
+            ),
+            'Q3': QuarterData(
+                months=[7, 8, 9],
+                season='peak_rainy_season',
+                description='Peak rains, Back-to-school, Agricultural productivity',
+                holiday_multiplier=1.6,
+                events=['Back_to_School', 'Farmers_Day']
+            ),
+            'Q4': QuarterData(
+                months=[10, 11, 12],
+                season='dry_season_start',
+                description='Dry season starts, Harvest time, Christmas celebrations',
+                holiday_multiplier=1.8,
+                events=['Christmas', 'New_Year_prep', 'Harvest_celebrations']
+            )
+        }
+    
+    def get_current_quarter(self) -> str:
+        """Get current quarter based on current month."""
+        current_month = datetime.now().month
+        return f"Q{(current_month - 1) // 3 + 1}"
+    
+    def get_enhanced_holiday_periods(self) -> Dict[str, Dict]:
+        """Enhanced holiday periods with quarterly multipliers."""
+        return {
+            'Q1': {'multiplier': 1.4, 'events': ['New_Year', 'Independence_Day', 'Easter']},
+            'Q2': {'multiplier': 1.2, 'events': ['Easter', 'Mothers_Day', 'Labour_Day']},
+            'Q3': {'multiplier': 1.6, 'events': ['Back_to_School', 'Farmers_Day']},
+            'Q4': {'multiplier': 1.8, 'events': ['Christmas', 'New_Year_prep', 'Harvest_celebrations']}
+        }
+    
+    def load_enhanced_products_from_file(self, products_file_path: Path) -> Dict[str, ProductData]:
+        """Load enhanced products with quarterly data from separate file."""
+        try:
+            with open(products_file_path, 'r', encoding='utf-8') as f:
+                products_data = json.load(f)
+            
+            enhanced_products = {}
+            for product_id, data in products_data.items():
+                product = ProductData(
+                    product_id=product_id,
+                    name=data['name'],
+                    category=data['category'],
+                    cost_price_cedis=data.get('cost_price_cedis', data.get('selling_price_cedis', 0) * 0.7),  # Fallback
+                    selling_price_cedis=data['selling_price_cedis'],
+                    perishability_days=data['perishability_days'],
+                    typical_sale_time_days=data['typical_sale_time_days'],
+                    storage_requirements=data.get('storage_requirements', ['dry']),
+                    customer_benefit=data['customer_benefit'],
+                    risk_factors=data.get('risk_factors', []),
+                    seasonal_multipliers=data.get('seasonal_multipliers', {}),
+                    target_demographics=data.get('target_demographics', []),
+                    location_suitability=data['location_suitability'],
+                    supplier_info=data.get('supplier_info', {}),
+                    # Enhanced quarterly fields
+                    base_cost_usd=data.get('base_cost_usd'),
+                    base_cost_cedis=data.get('base_cost_cedis'),
+                    import_dependent=data.get('import_dependent', False),
+                    quarterly_demand=data.get('quarterly_demand', {
+                        'Q1': 1.0, 'Q2': 1.0, 'Q3': 1.0, 'Q4': 1.0
+                    })
+                )
+                enhanced_products[product_id] = product
+            
+            self.logger.info(f"Loaded {len(enhanced_products)} enhanced products")
+            return enhanced_products
+            
+        except Exception as e:
+            self.logger.error(f"Error loading enhanced products: {e}")
+            return {}
+    
+    # Existing methods with enhancements
     def get_holiday_periods(self) -> Dict[str, HolidayPeriod]:
         """Get all holiday periods."""
         return self._holiday_periods.copy()
@@ -187,12 +286,43 @@ class ConfigManager:
             if product.category == category
         ]
     
+    def get_products_by_quarter_performance(self, quarter: str, threshold: float = 1.2) -> List[ProductData]:
+        """Get products that perform well in a specific quarter."""
+        return [
+            product for product in self._products.values()
+            if product.quarterly_demand.get(quarter, 1.0) >= threshold
+        ]
+    
+    def get_imported_products(self) -> List[ProductData]:
+        """Get all import-dependent products."""
+        return [
+            product for product in self._products.values()
+            if product.import_dependent
+        ]
+    
+    def get_local_products(self) -> List[ProductData]:
+        """Get all locally-sourced products."""
+        return [
+            product for product in self._products.values()
+            if not product.import_dependent
+        ]
+    
     def get_regions_by_type(self, region_type: str) -> List[RegionData]:
         """Get all regions of a specific type."""
         return [
             region for region in self._regions.values()
             if region.region_type == region_type
         ]
+    
+    def get_seasonal_products(self, season: str) -> List[ProductData]:
+        """Get products that are seasonal for a specific period."""
+        seasonal_products = []
+        for product in self._products.values():
+            for seasonal_event, multiplier in product.seasonal_multipliers.items():
+                if season.lower() in seasonal_event.lower() and multiplier > 1.2:
+                    seasonal_products.append(product)
+                    break
+        return seasonal_products
     
     def reload_configuration(self) -> None:
         """Reload configuration from file."""
@@ -212,5 +342,73 @@ class ConfigManager:
             'regions': list(self._regions.keys()),
             'product_categories': list(set(p.category for p in self._products.values())),
             'scoring_weights': self._scoring_weights.__dict__,
-            'business_parameters': self._business_parameters.__dict__
+            'business_parameters': self._business_parameters.__dict__,
+            # Enhanced summary
+            'imported_products_count': len(self.get_imported_products()),
+            'local_products_count': len(self.get_local_products()),
+            'current_quarter': self.get_current_quarter(),
+            'economic_factors': self.get_economic_factors().__dict__
         }
+    
+    def export_enhanced_products_template(self, output_path: Path) -> None:
+        """Export a template for enhanced products with quarterly data."""
+        template = {
+            "product_id_example": {
+                "name": "Product Name",
+                "category": "category_name",
+                "selling_price_cedis": 100.0,
+                "perishability_days": 365,
+                "typical_sale_time_days": 30,
+                "customer_benefit": "Product benefits description",
+                "location_suitability": {
+                    "urban_coastal": 1.2,
+                    "urban_inland": 1.0,
+                    "urban_northern": 0.9,
+                    "coastal_tourism": 1.1
+                },
+                # Enhanced quarterly fields
+                "base_cost_usd": 5.0,  # For imported goods
+                "base_cost_cedis": 75.0,  # For local goods  
+                "import_dependent": True,
+                "quarterly_demand": {
+                    "Q1": 1.1,
+                    "Q2": 1.0,
+                    "Q3": 1.3,
+                    "Q4": 1.6
+                }
+            }
+        }
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(template, f, indent=2, ensure_ascii=False)
+        
+        self.logger.info(f"Enhanced products template exported to {output_path}")
+    
+    def validate_quarterly_data_completeness(self) -> Dict[str, List[str]]:
+        """Validate that all products have complete quarterly data."""
+        issues = {
+            'missing_quarterly_demand': [],
+            'missing_cost_data': [],
+            'incomplete_location_suitability': []
+        }
+        
+        required_quarters = ['Q1', 'Q2', 'Q3', 'Q4']
+        required_location_types = ['urban_coastal', 'urban_inland', 'urban_northern', 'coastal_tourism']
+        
+        for product_id, product in self._products.items():
+            # Check quarterly demand
+            missing_quarters = [q for q in required_quarters if q not in product.quarterly_demand]
+            if missing_quarters:
+                issues['missing_quarterly_demand'].append(f"{product_id}: {missing_quarters}")
+            
+            # Check cost data
+            if not product.base_cost_usd and not product.base_cost_cedis:
+                issues['missing_cost_data'].append(product_id)
+            
+            # Check location suitability
+            missing_locations = [loc for loc in required_location_types 
+                               if loc not in product.location_suitability]
+            if missing_locations:
+                issues['incomplete_location_suitability'].append(f"{product_id}: {missing_locations}")
+        
+        return issues
